@@ -5,6 +5,7 @@ No need for any libraries, everything is written without any dependances being n
 from the standard python librarys (but they are already pre-installed)
 
 Takes ~1.4 seconds to parse one MCA file with 4 threads and filtering for `minecraft:deepslate_diamond_ore`
+on a `Ryzen 5 5600G`
 
 # `Usage:`
 

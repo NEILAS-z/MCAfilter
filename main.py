@@ -2,52 +2,67 @@ import argparse
 import os.path
 import sys
 import json
+import time
 import zlib
 import struct
 from multiprocessing import Process, Value, Manager, Lock
 
-def TAG_Byte_Array(d):
+def TAG_Byte_Array(d, skip):
     size = int.from_bytes(d[0:4], signed=True)
+    if skip:
+        return 4 + size
     arr = []
     for i in range(0, size, 1):
         arr.append(d[i + 4])
     return (arr, 4 + size)
 
-def TAG_Int_Array(d):
+def TAG_Int_Array(d, skip):
     size = int.from_bytes(d[0:4], signed=True)
+    if skip:
+        return 4 + size*4
     arr = []
     for i in range(0, size, 1):
         arr.append(int.from_bytes(d[(i*4 + 4) : (i*4 + 8)]))
     return (arr, 4 + size*4)
 
-def TAG_Long_Array(d):
+def TAG_Long_Array(d, skip):
     size = int.from_bytes(d[0:4], signed=True)
+    if skip:
+        return 4 + size*8
     arr = []
     for i in range(0, size, 1):
         arr.append(int.from_bytes(d[(i*8 + 4) : (i*8 + 4 + 8)]))
     return (arr, 4 + size*8)
 
-def TAG_String(d):
+def TAG_String(d, skip):
     size = int.from_bytes(d[0:2])
+    if skip:
+        return size + 2
     string = d[2:2+size].decode()
     return (string, size + 2)
 
-def TAG_List(d):
+def TAG_List(d, skip):
     TAG_ID = d[0]
     size = int.from_bytes(d[1:5])
     arr = []
     seek = 5
     if size == 0:
+        if skip:
+            return seek
         return ([], seek)
     if TAG_ID == 0:
+        if skip:
+            return seek + size
         return ([0]*size, seek + size)
     for i in range(0, size, 1):
-        data, seekoff = read[TAG_ID](d[seek:-1])
+        data, seekoff = read[TAG_ID](d[seek:], False)
         seek += seekoff
         arr.append(data)
+    if skip:
+        return seek
     return (arr, seek)
 
-def TAG_Compound(d):
+def TAG_Compound(d, skip):
     seek = 0
     compound_dict = {}
     while True:
@@ -58,21 +73,30 @@ def TAG_Compound(d):
         seek += 1  # move past the id
         NameLength = int.from_bytes(d[seek:seek+2])
         seek += 2  # move past the name length
-        tagName = d[seek:seek+NameLength].decode()
+        if not skip:
+            tagName = d[seek:seek+NameLength].decode()
         seek += NameLength
-        data, offseek = read[tag_id](d[seek:])
-        seek += offseek  # data
-        compound_dict[tagName] = data
+        if skip:
+            seek += read[tag_id](d[seek:], True)
+            continue
+        if tagName in ("xPos","zPos","Y", "sections", "block_states", "palette", "data", "Name", "Properties", "Status"):
+            data, offseek = read[tag_id](d[seek:], False)
+            compound_dict[tagName] = data
+            seek += offseek  # data
+        else:
+            seek += read[tag_id](d[seek:], True)
+    if skip:
+        return seek
     return (compound_dict, seek)
 
 # functions to read specific tags and output
 read = {
-    1: lambda d: (d[0] if d[0] < 128 else d[0] - 256,1),  # TAG_Byte
-    2: lambda d: (int.from_bytes(d[0:2], signed=True), 2), # TAG_Short
-    3: lambda d: (int.from_bytes(d[0:4], signed=True), 4), # TAG_Int
-    4: lambda d: (int.from_bytes(d[0:8], signed=True), 8), # TAG_Long
-    5: lambda d: (struct.unpack('f', d[0:4]), 4),          # TAG_Float
-    6: lambda d: (struct.unpack('d', d[0:8]), 8),          # TAG_Double
+    1: lambda d, skip: 1 if skip else ( d[0] if d[0] < 128 else d[0] - 256,1),  # TAG_Byte
+    2: lambda d, skip: 2 if skip else (int.from_bytes(d[0:2], signed=True), 2), # TAG_Short
+    3: lambda d, skip: 4 if skip else (int.from_bytes(d[0:4], signed=True), 4), # TAG_Int
+    4: lambda d, skip: 8 if skip else (int.from_bytes(d[0:8], signed=True), 8), # TAG_Long
+    5: lambda d, skip: 4 if skip else (struct.unpack('f', d[0:4]), 4),          # TAG_Float
+    6: lambda d, skip: 8 if skip else (struct.unpack('d', d[0:8]), 8),          # TAG_Double
     7: TAG_Byte_Array,
     8: TAG_String,
     9: TAG_List,
@@ -92,7 +116,7 @@ def ParseNBT(data) -> list:
     seek += 2
     if not TagNameLength == 0:
         seek += TagNameLength
-    (d, offseek) = read[TagID](data[seek:])
+    (d, offseek) = read[TagID](data[seek:], False)
     seek += offseek
     dictr.append(d)
     return dictr
@@ -125,7 +149,7 @@ def ReadChunk(uncomressed_ch_data, block, showBlock):
                 break
             filterIdx += 1
 
-        if found == False:
+        if not found:
             # its not in the section palette, skip
             continue
 
@@ -160,7 +184,7 @@ def ReadChunk(uncomressed_ch_data, block, showBlock):
             idx += 1
     return (chkblocks, blocks_found)
 
-def ReadChunks(seekPositions, file, output, i, block, lock, done_chunks, showblock, total_chunks):
+def ReadChunks(seekPositions, file, output, i, block, lock, done_chunks, showblock, total_chunks, verbose):
     chunks = []
     amount = 0
     with open(file, "rb") as f:
@@ -184,9 +208,10 @@ def ReadChunks(seekPositions, file, output, i, block, lock, done_chunks, showblo
             chkblocks, blocks = ReadChunk(f.read(length-1), block, showblock)
             chunks.append(chkblocks)
             amount += blocks
-            with lock:
-                done_chunks.value += 1
-                print(f"Thread {i} done, {done_chunks.value} / {total_chunks} | found {blocks} in chunk")
+            if verbose:
+                with lock:
+                    done_chunks.value += 1
+                    print(f"Thread {i} done, {done_chunks.value} / {total_chunks} | found {blocks} in chunk")
 
     output[i * 2] = chunks
     output[(i * 2) + 1] = amount
@@ -202,10 +227,11 @@ if __name__ == "__main__":
     total_chunks = 1024
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--file", required=True, help="Path to region file or folder full of region files")
-    parser.add_argument("-b","--block", required=True, help="Block to filter for. example: minecraft:deepslate_diamond_ore")
+    parser.add_argument("-f", "--file", type=str, required=True, help="Path to region file or folder full of region files")
+    parser.add_argument("-b","--block", type=str, required=True, help="Block to filter for. example: minecraft:deepslate_diamond_ore")
     parser.add_argument("-t","--threads", type=int, required=False, default=4, help="How many threads to read in parallel? (default: 4)")
     parser.add_argument("-d","--bDetail", required=False, action="store_true", default=False, help="Should the block Name/Properties be shown in the output.json? (default: False)")
+    parser.add_argument("-v", "--verbose", required=False, action="store_true", default=False, help="Logs more info when filtering blocks.")
     args = parser.parse_args()
 
     threads = args.threads
@@ -237,9 +263,10 @@ if __name__ == "__main__":
 
             processes = []
             for i, chunk_offsets in enumerate(workflow):
-                p = Process(target=ReadChunks, args=(chunk_offsets, path, output, i, args.block, lock, done_chunks, args.bDetail, total_chunks))
+                p = Process(target=ReadChunks, args=(chunk_offsets, path, output, i, args.block, lock, done_chunks, args.bDetail, total_chunks, args.verbose))
                 processes.append(p)
-                print(f"Dispatched thread {i}")
+                if args.verbose:
+                    print(f"Dispatched thread {i}")
                 p.start()
             
             for p in processes:
@@ -275,7 +302,12 @@ if __name__ == "__main__":
 
     total_chunks = len(mca_files * 1024)
 
-    print(f"Found {len(mca_files)} region file(s):")
+    print(f"Found {len(mca_files)} region file(s)")
+    if args.verbose:
+        start = time.perf_counter()
     for f in mca_files:
+        print("Reading", f + "...")
         readmca(f)
+    if args.verbose:
+        print("Took", time.perf_counter() - start, "seconds")
     

@@ -196,13 +196,16 @@ def ReadChunks(seekPositions, file, output, i, block, lock, done_chunks, showblo
             compress_type = int.from_bytes(f.read(1))
             f.seek((ch_offset * 4096) + 5)
             if compress_type == 1:
-                print("Unsupported Compression type: GZip")
+                if verbose:
+                    print("Unsupported Compression type: GZip")
                 continue
             if compress_type == 3:
-                print("Unsupported Compression type: Uncompressed, are you loading a <1.15.1 region file?")
+                if verbose:
+                    print("Unsupported Compression type: Uncompressed, are you loading a <1.15.1 region file?")
                 continue
             if not compress_type == 2:
-                print("Unsupported Compression type: Unknown, is your region file corrupted? Compression Type:", compress_type)
+                if verbose:
+                    print("Unsupported Compression type: Unknown, is your region file corrupted? Compression Type:", compress_type)
                 continue
             
             chkblocks, blocks = ReadChunk(f.read(length-1), block, showblock)

@@ -303,11 +303,9 @@ if __name__ == "__main__":
     total_chunks = len(mca_files * 1024)
 
     print(f"Found {len(mca_files)} region file(s)")
-    if args.verbose:
-        start = time.perf_counter()
+    start = time.perf_counter()
     for f in mca_files:
         print("Reading", f + "...")
         readmca(f)
-    if args.verbose:
-        print("Took", time.perf_counter() - start, "seconds")
+    print("Took", time.perf_counter() - start, "seconds")
     

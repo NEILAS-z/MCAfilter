@@ -9,7 +9,7 @@ Takes ~1.4 seconds to parse one MCA file with 4 threads (Ryzen 5 5600G, SSD) and
 # `Usage`:
 
 ```bash
-python main.py [-h] -f FILE -b BLOCK [-t THREADS] [-d]
+python main.py [-h] -f FILE -b BLOCK [-t THREADS] [-d] [-v]
 ```
 
 Options:
@@ -24,9 +24,11 @@ Options:
 
 -d, --bDetail | Should the block Name/Properties be shown in the output.json? (default: False)
 
+-v, --verbose | Logs more info when filtering blocks.
+
 **Example**:
 ```bash
-python main.py -f r.0.0.mca -b minecraft:barrel -t 8 -d True
+python main.py -f r.0.0.mca -b minecraft:barrel -t 8 -d -v
 ```
 
 ------

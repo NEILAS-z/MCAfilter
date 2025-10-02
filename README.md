@@ -4,7 +4,9 @@ Filters MCA (Minecraft Anvil Format) for blocks using multithreading and outputs
 No need for any libraries, everything is written without any dependencies being needed besides
 from the standard python libraries (but they are already pre-installed)
 
-Takes ~1.1 seconds to parse one MCA file with 4 threads (Ryzen 5 5600G, SSD) and filtering for `minecraft:deepslate_diamond_ore`
+Takes ~1.1 seconds to parse one, fully loaded MCA file with 4 threads (Ryzen 5 5600G, SSD) and filtering for `minecraft:deepslate_diamond_ore`
+
+1 MCA file = 32x32 chunks
 
 # `Usage`:
 
